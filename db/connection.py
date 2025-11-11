@@ -21,6 +21,7 @@ def get_connection():
         print ("Error al Conectarse a MySQL", e)
         return None
     
+    
     if __name__ == "__main":
         print("--- Iniciando Prueba de conexion ---")
         conexion_prueba = get_connection()
