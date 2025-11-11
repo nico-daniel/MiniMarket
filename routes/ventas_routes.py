@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from dao.productos import Ventas
+from dao.ventas import Ventas
 
 ventas_bp = Blueprint('ventas_bp', __name__)
 ventas = Ventas()
