@@ -4,7 +4,7 @@ from mysql.connector import Error
 def get_connection():
 
     try:
-        conexion = mysql.connector.connet(
+        conexion = mysql.connector.connect(
             host = 'localhost',         # o la IP del servivor MySQL
             user = 'root',              # el ususario de MySQL
             password = '',              # tu contraseña , si no se tiene una contraseña se deja vacio

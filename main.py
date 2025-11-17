@@ -6,7 +6,9 @@ from routes.ventas_routes import ventas_bp
 app = Flask(__name__)
 
 # Habilitar CORS para permitir peticiones desde el frontend en localhost:3000
-CORS(app, resources={r"/api/*": {"origins": "http://localhost:3000"}})
+# CORS(app, resources={r"/api/*": {"origins": "http://localhost:3000"}})
+CORS(app, supports_credentials=True, resources={r"/*": {"origins": "http://localhost:3000"}})
+
 
 # Registrar los blueprints con prefijos
 app.register_blueprint(productos_bp, url_prefix='/api/productos')
