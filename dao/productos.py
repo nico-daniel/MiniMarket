@@ -93,15 +93,33 @@ class Productos:
     def obtener_resumen_diario(self):
         try:
             with self.conexion.cursor(dictionary=True) as cursor:
-                cursor.execute("SELECT COALESCE(SUM(v.total), 0) AS total_ventas, COUNT(v.id) AS cantidad_ventas FROM ventas v WHERE v.fecha = CURDATE();")
+
+                # ------------------------- CAMBIO 1 -------------------------
+                # Quitado "AND activo = 1" porque la columna NO existe
+                cursor.execute("""
+                    SELECT COALESCE(SUM(v.total), 0) AS total_ventas, 
+                           COUNT(v.id) AS cantidad_ventas
+                    FROM ventas v 
+                    WHERE v.fecha = CURDATE();
+                """)
+
                 resumen_ventas = cursor.fetchone()
-                cursor.execute("SELECT COUNT(*) AS productos_bajo_stock FROM productos WHERE stock <= 5 AND activo = 1;")
+
+                cursor.execute("""
+                    SELECT COUNT(*) AS productos_bajo_stock
+                    FROM productos
+                    WHERE stock <= 5;  -- ← CAMBIO (se quitó activo = 1)
+                """)
+                # -------------------------------------------------------------
+
                 resumen_stock = cursor.fetchone()
+
                 return {
                     "total_ventas": resumen_ventas['total_ventas'],
                     "cantidad_ventas": resumen_ventas['cantidad_ventas'],
                     "productos_bajo_stock": resumen_stock['productos_bajo_stock']
                 }
+
         except Exception as e:
             print(f"Error al obtener resumen diario: {e}")
             return {"error": str(e)}
@@ -115,11 +133,11 @@ class Productos:
         except Exception as e:
             print(f"Error al obtener historial de cajas: {e}")
             return []
-        
+
     def obtener_mas_vendidos_hoy(self):
         query = "SELECT * FROM vista_mas_vendidos_hoy;"
         return self._ejecutar_consulta(query)
-    
+
     def obtener_productos_ordenados(self, orden="stock_asc", tipo=None, busqueda=None):
         query = """
             SELECT 
@@ -129,9 +147,15 @@ class Productos:
                 CASE WHEN p.stock <= 5 THEN 1 ELSE 0 END AS alerta_critica
             FROM productos p
             LEFT JOIN tipos_productos tp ON p.id_tipo_producto = tp.id
-            LEFT JOIN distribuidores d ON p.id_distribuidor = d.id
+
+            -- ------------------------- CAMBIO 2 -------------------------
+            -- Estaba "id_distribuidor" pero tu columna real es id_distribuidora
+            LEFT JOIN distribuidores d ON p.id_distribuidora = d.id
+            -- ------------------------------------------------------------
+
             WHERE 1=1
         """
+
         params = {}
 
         if tipo:
