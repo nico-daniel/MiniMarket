@@ -78,3 +78,30 @@ def historial_movimientos(id_producto):
 def resumen_diario():
     resultado = productos.obtener_resumen_diario()
     return jsonify(resultado)
+
+# ✅ Obtener Historial de caja
+@productos_bp.route('/historial-cajas', methods=['GET'])
+def historial_cajas():
+    resultado = productos.obtener_historial_cajas()
+    return jsonify(resultado)
+
+# ✅ Obtener productos mas vendidos hoy
+@productos_bp.route('/mas-vendidos-hoy', methods=['GET'])
+def mas_vendidos_hoy():
+    resultado = productos.obtener_mas_vendidos_hoy()
+    return jsonify(resultado)
+
+# ✅ Elimnar producto
+@productos_bp.route('/<int:id_producto>', methods=['DELETE'])
+def eliminar_producto(id_producto):
+    resultado = productos.eliminar_producto(id_producto)
+    return jsonify(resultado)
+
+# ✅ Obtener productos ordenados con filtros
+@productos_bp.route('/ordenados', methods=['GET'])
+def productos_ordenados():
+    orden = request.args.get('orden', 'stock_asc')
+    tipo = request.args.get('tipo')
+    busqueda = request.args.get('busqueda')
+    resultado = productos.obtener_productos_ordenados(orden, tipo, busqueda)
+    return jsonify(resultado)

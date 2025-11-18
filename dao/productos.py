@@ -106,3 +106,63 @@ class Productos:
             print(f"Error al obtener resumen diario: {e}")
             return {"error": str(e)}
 
+    def obtener_historial_cajas(self):
+        query = "SELECT * FROM vista_historial_cajas;"
+        try:
+            with self.conexion.cursor(dictionary=True) as cursor:
+                cursor.execute(query)
+                return cursor.fetchall()
+        except Exception as e:
+            print(f"Error al obtener historial de cajas: {e}")
+            return []
+        
+    def obtener_mas_vendidos_hoy(self):
+        query = "SELECT * FROM vista_mas_vendidos_hoy;"
+        return self._ejecutar_consulta(query)
+    
+    def obtener_productos_ordenados(self, orden="stock_asc", tipo=None, busqueda=None):
+        query = """
+            SELECT 
+                p.*, 
+                tp.detalle AS tipo_producto,
+                d.nombre AS distribuidor,
+                CASE WHEN p.stock <= 5 THEN 1 ELSE 0 END AS alerta_critica
+            FROM productos p
+            LEFT JOIN tipos_productos tp ON p.id_tipo_producto = tp.id
+            LEFT JOIN distribuidores d ON p.id_distribuidor = d.id
+            WHERE 1=1
+        """
+        params = {}
+
+        if tipo:
+            query += " AND p.id_tipo_producto = %(tipo)s"
+            params["tipo"] = tipo
+
+        if busqueda:
+            query += " AND (p.nombre LIKE %(busqueda)s OR p.codigo_barra LIKE %(busqueda)s)"
+            params["busqueda"] = f"%{busqueda}%"
+
+        orden_map = {
+            "stock_asc": "p.stock ASC",
+            "stock_desc": "p.stock DESC",
+            "nombre_asc": "p.nombre ASC",
+            "precio_asc": "p.precio_venta ASC",
+            "precio_desc": "p.precio_venta DESC",
+            "nuevo": "p.id DESC"
+        }
+
+        orden_sql = orden_map.get(orden, "p.stock ASC")
+        query += f" ORDER BY {orden_sql}, p.nombre ASC"
+
+        return self._ejecutar_consulta(query, params)
+
+    def eliminar_producto(self, id_producto):
+        try:
+            with self.conexion.cursor() as cursor:
+                cursor.execute("DELETE FROM productos WHERE id = %s;", (id_producto,))
+                self.conexion.commit()
+                return {"status": "ok"}
+        except Exception as e:
+            print(f"Error al eliminar producto: {e}")
+            self.conexion.rollback()
+            return {"error": str(e)}
