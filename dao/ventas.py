@@ -1,17 +1,21 @@
 from db.connection import get_connection
 
+
 class Ventas:
     def __init__(self):
-        self.conexion = get_connection()
-        if self.conexion is None:
-            raise ConnectionError("Error al conectar con la Base de Datos")
+        # Stateless regarding DB connections; methods obtain connections as needed
+        pass
 
     # =========================
     # MÉTODO AUXILIAR
     # =========================
     def _ejecutar_consulta(self, query, params=None, fetchone=False):
+        conn = get_connection()
+        if conn is None:
+            print("No hay conexion disponible")
+            return [] if not fetchone else None
         try:
-            with self.conexion.cursor(dictionary=True) as cursor:
+            with conn.cursor(dictionary=True) as cursor:
                 cursor.execute(query, params)
                 if fetchone:
                     return cursor.fetchone()
@@ -19,6 +23,11 @@ class Ventas:
         except Exception as e:
             print(f"Error de consulta: {e}")
             return [] if not fetchone else None
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
     # =========================
     # REGISTRAR VENTA
@@ -36,9 +45,12 @@ class Ventas:
             ...
         ]
         """
+        conn = get_connection()
+        if conn is None:
+            return {"error": "No DB connection"}
         try:
-            self.conexion.autocommit = False
-            with self.conexion.cursor() as cursor:
+            conn.autocommit = False
+            with conn.cursor() as cursor:
                 # 1️⃣ Crear caja si no hay abierta
                 cursor.execute(
                     "SELECT id FROM caja WHERE estado='ABIERTA' ORDER BY fecha_apertura DESC LIMIT 1;"
@@ -52,7 +64,7 @@ class Ventas:
                     )
                     id_caja = cursor.lastrowid
 
-                # 2️⃣ Verificar stock
+                # 2️⃣ Verificar stock (locks rows)
                 for item in items:
                     cursor.execute(
                         "SELECT stock FROM productos WHERE id = %s FOR UPDATE;",
@@ -98,13 +110,21 @@ class Ventas:
                         (item['cantidad'], item['id_producto'])
                     )
 
-                self.conexion.commit()
+                conn.commit()
                 return {"id_venta": id_venta}
 
         except Exception as e:
             print(f"Error al registrar venta: {e}")
-            self.conexion.rollback()
+            try:
+                conn.rollback()
+            except Exception:
+                pass
             return {"error": str(e)}
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
     # =========================
     # OBTENER VENTA POR ID
@@ -123,8 +143,11 @@ class Ventas:
     # ANULAR VENTA
     # =========================
     def anular_venta(self, id_venta):
+        conn = get_connection()
+        if conn is None:
+            return {"error": "No DB connection"}
         try:
-            with self.conexion.cursor() as cursor:
+            with conn.cursor() as cursor:
                 cursor.execute(
                     "SELECT id_producto, cantidad FROM detalle_ventas WHERE id_venta = %s;",
                     (id_venta,)
@@ -144,13 +167,21 @@ class Ventas:
 
                 cursor.execute("DELETE FROM detalle_ventas WHERE id_venta = %s;", (id_venta,))
                 cursor.execute("DELETE FROM ventas WHERE id = %s;", (id_venta,))
-                self.conexion.commit()
+                conn.commit()
                 return {"status": "venta anulada"}
 
         except Exception as e:
             print(f"Error al anular venta: {e}")
-            self.conexion.rollback()
+            try:
+                conn.rollback()
+            except Exception:
+                pass
             return {"error": str(e)}
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
     # =========================
     # OBTENER CAJA DEL DÍA
@@ -188,18 +219,29 @@ class Ventas:
     # CERRAR CAJA
     # =========================
     def cerrar_caja(self, id_caja, saldo_final):
+        conn = get_connection()
+        if conn is None:
+            return {"error": "No DB connection"}
         try:
-            with self.conexion.cursor() as cursor:
+            with conn.cursor() as cursor:
                 cursor.execute(
                     "UPDATE caja SET fecha_cierre = NOW(), saldo_final = %s, estado = 'CERRADA' WHERE id = %s;",
                     (saldo_final, id_caja)
                 )
-                self.conexion.commit()
+                conn.commit()
                 return {"status": "ok"}
         except Exception as e:
             print(f"Error al cerrar caja: {e}")
-            self.conexion.rollback()
+            try:
+                conn.rollback()
+            except Exception:
+                pass
             return {"error": str(e)}
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
     # =========================
     # HISTORIAL DE CAJAS COMPLETO
