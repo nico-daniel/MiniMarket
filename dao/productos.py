@@ -1,19 +1,29 @@
 from db.connection import get_connection
 
+
 class Productos:
     def __init__(self):
-        self.conexion = get_connection()
-        if self.conexion is None:
-            raise ConnectionError("Error al conectar con la Base de Datos")
+        # Keep class stateless regarding DB connections; each operation
+        # will obtain and close a connection from the pool.
+        pass
 
     def _ejecutar_consulta(self, query, params=None):
+        conn = get_connection()
+        if conn is None:
+            print("No hay conexion disponible")
+            return []
         try:
-            with self.conexion.cursor(dictionary=True) as cursor:
+            with conn.cursor(dictionary=True) as cursor:
                 cursor.execute(query, params)
                 return cursor.fetchall()
         except Exception as e:
             print(f"Error al ejecutar la consulta: {e}")
             return []
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
     def obtener_todos_con_detalle(self):
         query = """
@@ -39,15 +49,26 @@ class Productos:
             INSERT INTO productos (nombre, codigo_barra, unidad_medida, precio_venta, stock, id_tipo_producto, id_distribuidora)
             VALUES (%s, %s, %s, %s, %s, %s, %s);
         """
+        conn = get_connection()
+        if conn is None:
+            return None
         try:
-            with self.conexion.cursor() as cursor:
+            with conn.cursor() as cursor:
                 cursor.execute(query, (nombre, codigo_barra, unidad_medida, precio_venta, stock, id_tipo_producto, id_distribuidora))
-                self.conexion.commit()
+                conn.commit()
                 return cursor.lastrowid
         except Exception as e:
             print(f"Error al insertar producto: {e}")
-            self.conexion.rollback()
+            try:
+                conn.rollback()
+            except Exception:
+                pass
             return None
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
     def actualizar_producto(self, id_producto, nombre, codigo_barra, unidad_medida, precio_venta, stock, id_tipo_producto, id_distribuidora):
         query = """
@@ -56,27 +77,49 @@ class Productos:
                 stock = %s, id_tipo_producto = %s, id_distribuidora = %s
             WHERE id = %s;
         """
+        conn = get_connection()
+        if conn is None:
+            return None
         try:
-            with self.conexion.cursor() as cursor:
+            with conn.cursor() as cursor:
                 cursor.execute(query, (nombre, codigo_barra, unidad_medida, precio_venta, stock, id_tipo_producto, id_distribuidora, id_producto))
-                self.conexion.commit()
+                conn.commit()
                 return cursor.rowcount
         except Exception as e:
             print(f"Error al actualizar producto: {e}")
-            self.conexion.rollback()
+            try:
+                conn.rollback()
+            except Exception:
+                pass
             return None
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
     def registrar_entrada_stock(self, id_producto, cantidad):
+        conn = get_connection()
+        if conn is None:
+            return {"error": "No DB connection"}
         try:
-            with self.conexion.cursor() as cursor:
+            with conn.cursor() as cursor:
                 cursor.execute("UPDATE productos SET stock = stock + %s WHERE id = %s;", (cantidad, id_producto))
                 cursor.execute("INSERT INTO movimientos_stock (tipo_movimiento, cantidad, fecha, id_producto) VALUES ('ENTRADA_COMPRA', %s, CURDATE(), %s);", (cantidad, id_producto))
-                self.conexion.commit()
+                conn.commit()
                 return {"status": "ok"}
         except Exception as e:
             print(f"Error al registrar entrada de stock: {e}")
-            self.conexion.rollback()
+            try:
+                conn.rollback()
+            except Exception:
+                pass
             return {"error": str(e)}
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
     def obtener_historial_movimientos(self, id_producto):
         query = """
@@ -91,48 +134,36 @@ class Productos:
         return self._ejecutar_consulta(query, (id_producto,))
 
     def obtener_resumen_diario(self):
+        conn = get_connection()
+        if conn is None:
+            return {"error": "No DB connection"}
         try:
-            with self.conexion.cursor(dictionary=True) as cursor:
-
-                # ------------------------- CAMBIO 1 -------------------------
-                # Quitado "AND activo = 1" porque la columna NO existe
+            with conn.cursor(dictionary=True) as cursor:
+                # Combine the counts into a single round-trip for efficiency
                 cursor.execute("""
-                    SELECT COALESCE(SUM(v.total), 0) AS total_ventas, 
-                           COUNT(v.id) AS cantidad_ventas
-                    FROM ventas v 
-                    WHERE v.fecha = CURDATE();
+                    SELECT
+                        (SELECT COALESCE(SUM(v.total),0) FROM ventas v WHERE v.fecha = CURDATE()) AS total_ventas,
+                        (SELECT COUNT(v2.id) FROM ventas v2 WHERE v2.fecha = CURDATE()) AS cantidad_ventas,
+                        (SELECT COUNT(*) FROM productos WHERE stock <= 5) AS productos_bajo_stock
                 """)
-
-                resumen_ventas = cursor.fetchone()
-
-                cursor.execute("""
-                    SELECT COUNT(*) AS productos_bajo_stock
-                    FROM productos
-                    WHERE stock <= 5;  -- ← CAMBIO (se quitó activo = 1)
-                """)
-                # -------------------------------------------------------------
-
-                resumen_stock = cursor.fetchone()
-
+                fila = cursor.fetchone()
                 return {
-                    "total_ventas": resumen_ventas['total_ventas'],
-                    "cantidad_ventas": resumen_ventas['cantidad_ventas'],
-                    "productos_bajo_stock": resumen_stock['productos_bajo_stock']
+                    "total_ventas": fila.get('total_ventas', 0),
+                    "cantidad_ventas": fila.get('cantidad_ventas', 0),
+                    "productos_bajo_stock": fila.get('productos_bajo_stock', 0)
                 }
-
         except Exception as e:
             print(f"Error al obtener resumen diario: {e}")
             return {"error": str(e)}
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
     def obtener_historial_cajas(self):
         query = "SELECT * FROM vista_historial_cajas;"
-        try:
-            with self.conexion.cursor(dictionary=True) as cursor:
-                cursor.execute(query)
-                return cursor.fetchall()
-        except Exception as e:
-            print(f"Error al obtener historial de cajas: {e}")
-            return []
+        return self._ejecutar_consulta(query)
 
     def obtener_mas_vendidos_hoy(self):
         query = "SELECT * FROM vista_mas_vendidos_hoy;"
@@ -181,12 +212,23 @@ class Productos:
         return self._ejecutar_consulta(query, params)
 
     def eliminar_producto(self, id_producto):
+        conn = get_connection()
+        if conn is None:
+            return {"error": "No DB connection"}
         try:
-            with self.conexion.cursor() as cursor:
+            with conn.cursor() as cursor:
                 cursor.execute("DELETE FROM productos WHERE id = %s;", (id_producto,))
-                self.conexion.commit()
+                conn.commit()
                 return {"status": "ok"}
         except Exception as e:
             print(f"Error al eliminar producto: {e}")
-            self.conexion.rollback()
+            try:
+                conn.rollback()
+            except Exception:
+                pass
             return {"error": str(e)}
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
